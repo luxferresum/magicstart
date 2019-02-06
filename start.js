@@ -13,10 +13,13 @@ const options = {
   testTree: new Funnel('test'),
 
   get testingTree() {
-    const src = new Funnel(options.srcTree, { destDir: 'src' });
-    const test = new Funnel(options.testTree, { destDir: 'test' });
-    return new MergeTrees([src, test]);
+    return new MergeTrees([
+      new Funnel(options.srcTree, { destDir: 'src' }),
+      new Funnel(options.testTree, { destDir: 'test' })
+    ]);
   },
+
+  build: tree => tree,
 
   router: 'router.js',
   routerPrefix: '/api',
@@ -36,8 +39,6 @@ function _watch(tree, outDir, buildSuccess = () => {}, beforeBuildSuccess = () =
   const watcher = new Watcher(builder);
   const treeSync = new TreeSync(builder.outputPath, outDir);
 
-  console.log(builder.outputPath);
-
   watcher.on('buildSuccess', async (...args) => {
     beforeBuildSuccess();
     await treeSync.sync();
@@ -47,15 +48,35 @@ function _watch(tree, outDir, buildSuccess = () => {}, beforeBuildSuccess = () =
   watcher.start();
 }
 
-function test() {
-  const outDir = 'dist_testing';
-  _watch(options.testingTree, outDir, () => {
-    const mocha = new Mocha();
-    walkSync(path.join(outDir, 'test'))
-      .filter(x => !x.endsWith('/'))
-      .forEach(x => mocha.addFile(path.join(outDir, 'test', x)));
-    mocha.run();
+async function _build(tree, outDir) {
+  const builder = new Builder(tree);
+  await builder.build();
+  const treeSync = new TreeSync(builder.outputPath, outDir);
+  await treeSync.sync();
+  await builder.cleanup();
+}
+
+function _test(dir) {
+  const mocha = new Mocha();
+  walkSync(path.join(dir, 'test'))
+    .filter(x => !x.endsWith('/'))
+    .forEach(x => mocha.addFile(path.join(dir, 'test', x)));
+  
+  return new Promise((resolve) => {
+    mocha.run(failures => resolve(failures));
   });
+}
+
+async function test(watch) {
+  const outDir = 'dist_testing';
+
+  if(watch) {
+    _watch(options.testingTree, outDir, () => _test(outDir));
+  } else {
+    _build(options.testingTree, outDir);
+    const failures = await _test(outDir);
+    process.exitCode = failures ? 1 : 0;
+  }
 }
 
 function serve() {
@@ -86,8 +107,9 @@ function serve() {
   });
 }
 
-function build() {
-
+async function build() {
+  await _build(options.srcTree, 'dist');
+  console.log('build complete');
 }
 
-serve();
+module.exports = { build, test, serve };
