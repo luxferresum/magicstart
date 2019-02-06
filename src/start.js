@@ -73,7 +73,7 @@ async function test(watch) {
   if(watch) {
     _watch(options.testingTree, outDir, () => _test(outDir));
   } else {
-    _build(options.testingTree, outDir);
+    await _build(options.testingTree, outDir);
     const failures = await _test(outDir);
     process.exitCode = failures ? 1 : 0;
   }

@@ -1,5 +1,5 @@
 const commander = require('commander');
-const { build, test, serve } = require('./start');
+const { build, test, serve } = require('./src/start');
 
 commander.version(require('./package.json').version)
 commander.command('build')
