@@ -19,6 +19,8 @@ module.exports = function() {
 
     routerFile: 'router.js',
     loadRouter: router => router,
+    unloadRouter: () => {},
+    resetWorld: () => {},
     routerPrefix: '/api',
     port: 3000,
   }

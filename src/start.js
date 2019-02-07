@@ -81,13 +81,31 @@ function serve() {
     }
   });
 
-  _watch(options.srcTree, outDir, () => {
-    console.log('reloaded server');
+  function restart() {
     router = options.loadRouter(require(path.join(process.cwd(), outDir, options.routerFile)));
     waitingRequests.forEach(({ req, res, next }) => router(req, res, next));
     waitingRequests.length = 0;
+  }
+
+  app.use('/CLEANUP_WORLD', async (req, res, next) => {
+    try {
+      router = null;
+      await options.unloadRouter();
+      await options.resetWorld();
+      restart();
+      
+      res.status(200).end();
+    } catch (e) {
+      res.status(500).end();
+    }
+  });
+
+  _watch(options.srcTree, outDir, () => {
+    console.log('reloaded server');
+    restart();
   }, () => {
     router = null;
+    options.unloadRouter();
   });
 }
 
