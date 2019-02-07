@@ -1,5 +1,3 @@
-const Funnel = require('broccoli-funnel');
-const MergeTrees = require('broccoli-merge-trees');
 const { Builder, Watcher } = require('broccoli');
 const TreeSync = require('tree-sync');
 const Mocha = require('mocha');
@@ -8,23 +6,7 @@ const path = require('path');
 const express = require('express');
 const http = require('http');
 
-const options = {
-  srcTree: new Funnel('src'),
-  testTree: new Funnel('test'),
-
-  get testingTree() {
-    return new MergeTrees([
-      new Funnel(options.srcTree, { destDir: 'src' }),
-      new Funnel(options.testTree, { destDir: 'test' })
-    ]);
-  },
-
-  build: tree => tree,
-
-  router: 'router.js',
-  routerPrefix: '/api',
-  port: 3000,
-}
+const options = require('./load-options.js')();
 
 function cleanupCache(prfxDir) {
   Object.keys(require.cache).forEach((key) => {
@@ -61,9 +43,11 @@ function _test(dir) {
   walkSync(path.join(dir, 'test'))
     .filter(x => !x.endsWith('/'))
     .forEach(x => mocha.addFile(path.join(dir, 'test', x)));
-  
+
   return new Promise((resolve) => {
-    mocha.run(failures => resolve(failures));
+    mocha.run(failures => {
+      resolve(failures);
+    });
   });
 }
 

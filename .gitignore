@@ -1,4 +1,4 @@
-node_modules/
-dist_testing/
-dist_server/
-dist/
+/node_modules/
+/dist_testing/
+/dist_server/
+/dist/
