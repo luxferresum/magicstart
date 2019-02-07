@@ -17,7 +17,8 @@ module.exports = function() {
 
     build: tree => tree,
 
-    router: 'router.js',
+    routerFile: 'router.js',
+    loadRouter: router => router,
     routerPrefix: '/api',
     port: 3000,
   }

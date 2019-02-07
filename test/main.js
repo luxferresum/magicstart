@@ -1,11 +1,15 @@
 const {expect} = require('chai');
 const { build, test, serve } = require('../src/start');
+const options = require('../src/loaded-options');
 const rimraf = require('rimraf');
 const fs = require('fs');
 const sinon = require('sinon');
 const Mocha = require('mocha');
 const { Builder, Watcher } = require('broccoli');
 const TreeSync = require('tree-sync');
+const path = require('path');
+const http = require('http');
+const supertest = require('supertest');
 
 function timeout(t) {
   return new Promise(r => setTimeout(() => r(), t));
@@ -17,13 +21,18 @@ describe('magicstart', function() {
   let builderCleanup;
   let watcherStart;
   let watcherQuit;
-  let oldCwd;
-  let exitCode;
   let mochaAddFile;
   let mochaRun;
+  let listen;
+
+  let oldCwd;
+  let exitCode;
+  let app;
 
   beforeEach(() => {
     oldCwd = process.cwd();
+    process.chdir('test_fixtures/project1/');
+
     exitCode = process.exitCode;
     sync = sinon.stub(TreeSync.prototype, 'sync');
     builderBuild = sinon.stub(Builder.prototype, 'build');
@@ -32,15 +41,16 @@ describe('magicstart', function() {
     watcherQuit = sinon.stub(Watcher.prototype, 'quit');
     mochaAddFile = sinon.stub(Mocha.prototype, 'addFile');
     mochaRun = sinon.stub(Mocha.prototype, 'run');
+    listen = sinon.stub();
+
+    sinon.stub(http, 'Server').callsFake(a => {
+      app = a;
+      return { listen };
+    });
   });
   afterEach(() => {
-    sync.restore();
-    builderBuild.restore();
-    builderCleanup.restore();
-    watcherStart.restore();
-    watcherQuit.restore();
-    mochaAddFile.restore();
-    mochaRun.restore();
+    app = null;
+    sinon.restore();
 
     process.chdir(oldCwd);
     process.exitCode = exitCode;
@@ -59,8 +69,6 @@ describe('magicstart', function() {
     it('does test the project', async function() {
       mochaRun.callsFake(fn => fn([]));
 
-      process.chdir('test_fixtures/project1/');
-
       await test();
       expect(builderBuild.callCount).to.be.eq(1);
       expect(builderCleanup.callCount).to.be.eq(1);
@@ -74,8 +82,6 @@ describe('magicstart', function() {
       watcherStart.callsFake(function() {
         instance = this;
       });
-
-      process.chdir('test_fixtures/project1/');
 
       test(true);
 
@@ -98,10 +104,48 @@ describe('magicstart', function() {
   });
 
   describe('it does serve a project', function() {
-    it('does serve the project', async function() {
-      process.chdir('test_fixtures/project1/');
+    let instance;
+    let routerStub;
+    let loadRouter;
+    beforeEach(function() {
+      watcherStart.callsFake(function() {
+        instance = this;
+      });
+
+      routerStub = sinon.stub();
+      loadRouter = sinon.stub(options, 'loadRouter')
+        .returns(routerStub);
+
       serve();
-      
+    });
+
+    async function endBuild() {
+      instance.emit('buildSuccess');
+      await timeout(1);
+    }
+
+    it('does serve the project and proxy a request to the router', async function() {
+      await endBuild();
+
+      routerStub.callsFake((req, res, next) => res.status(200).end());
+
+      await supertest(app).get('/api/foo').expect(200);
+
+      expect(loadRouter.callCount, 'loaded router').to.be.eq(1);
+      expect(routerStub.callCount).to.be.eq(1);
+    });
+
+    it('does reload the router', async function() {
+      await endBuild();
+      await endBuild();
+      expect(loadRouter.callCount, 'loaded router').to.be.eq(2);
+    });
+
+    it('does listen on a custom port', async function() {
+      sinon.stub(options, 'port').returns(1234);
+      listen.callsFake(p => expect(p).to.be.eq(1234));
+      await endBuild();
+      expect(listen.callCount).to.be.eq(1);
     });
   });
 });

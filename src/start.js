@@ -6,7 +6,7 @@ const path = require('path');
 const express = require('express');
 const http = require('http');
 
-const options = require('./load-options.js')();
+const options = require('./loaded-options.js');
 
 function cleanupCache(prfxDir) {
   Object.keys(require.cache).forEach((key) => {
@@ -83,7 +83,7 @@ function serve() {
 
   _watch(options.srcTree, outDir, () => {
     console.log('reloaded server');
-    router = require(path.join(process.cwd(), outDir, options.router));
+    router = options.loadRouter(require(path.join(process.cwd(), outDir, options.routerFile)));
     waitingRequests.forEach(({ req, res, next }) => router(req, res, next));
     waitingRequests.length = 0;
   }, () => {
