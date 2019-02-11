@@ -82,7 +82,11 @@ function serve() {
   });
 
   async function restart() {
-    router = options.loadRouter(require(path.join(process.cwd(), outDir, 'src', options.routerFile)));
+    router = require(path.join(process.cwd(), outDir, 'src', options.routerFile));
+    if(options.routerExportName) {
+      router = router[options.routerExportName];
+    }
+    
     waitingRequests.forEach(({ req, res, next }) => router(req, res, next));
     waitingRequests.length = 0;
   }
