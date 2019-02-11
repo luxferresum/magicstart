@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 const commander = require('commander');
 const { build, test, serve } = require('./src/start');
 

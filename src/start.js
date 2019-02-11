@@ -52,7 +52,7 @@ function _test(dir) {
 }
 
 async function test(watch) {
-  const outDir = 'dist_testing';
+  const outDir = 'dist';
 
   if(watch) {
     _watch(options.testingTree, outDir, () => _test(outDir));
@@ -64,7 +64,7 @@ async function test(watch) {
 }
 
 function serve() {
-  const outDir = 'dist_server';
+  const outDir = 'dist';
   const app = express();
   const server = http.Server(app);
   server.listen(options.port, () => {
@@ -81,8 +81,8 @@ function serve() {
     }
   });
 
-  function restart() {
-    router = options.loadRouter(require(path.join(process.cwd(), outDir, options.routerFile)));
+  async function restart() {
+    router = options.loadRouter(require(path.join(process.cwd(), outDir, 'src', options.routerFile)));
     waitingRequests.forEach(({ req, res, next }) => router(req, res, next));
     waitingRequests.length = 0;
   }
@@ -90,9 +90,8 @@ function serve() {
   app.use('/CLEANUP_WORLD', async (req, res, next) => {
     try {
       router = null;
-      await options.unloadRouter();
       await options.resetWorld();
-      restart();
+      await restart();
       
       res.status(200).end();
     } catch (e) {
@@ -100,17 +99,16 @@ function serve() {
     }
   });
 
-  _watch(options.srcTree, outDir, () => {
+  _watch(options.servingTree, outDir, () => {
     console.log('reloaded server');
     restart();
   }, () => {
     router = null;
-    options.unloadRouter();
   });
 }
 
 async function build() {
-  await _build(options.srcTree, 'dist');
+  await _build(options.appTree, 'dist');
   console.log('build complete');
 }
 

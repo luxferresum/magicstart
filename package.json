@@ -1,7 +1,7 @@
 {
   "name": "magicstart",
-  "version": "0.0.1",
-  "main": "index.js",
+  "version": "0.0.2",
+  "bin": "index.js",
   "license": "MIT",
   "scripts": {
     "test": "mocha test",
@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "broccoli": "^2.0.1",
+    "broccoli-caching-writer": "^3.0.3",
     "broccoli-funnel": "^2.0.1",
     "broccoli-merge-trees": "^3.0.2",
     "commander": "^2.19.0",
