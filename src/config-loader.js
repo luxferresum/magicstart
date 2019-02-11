@@ -19,7 +19,9 @@ module.exports = class ConfigLoader extends Plugin {
       }
     });
     const json = require(path.join(this.inputPaths[0], this.file));
-    console.log('out', path.join(this.outputPath, this.file));
-    fs.writeFileSync(path.join(this.outputPath, this.file), JSON.stringify(json, null, 2));
+    
+    const configString = `module.exports = ${JSON.stringify(json, null, 2)}`;
+
+    fs.writeFileSync(path.join(this.outputPath, this.file), configString);
   }
 };
