@@ -39,10 +39,10 @@ module.exports = function() {
     resetWorld: () => {},
 
     initFile: 'init.js',
-    initExportName: null,
 
     routerFile: 'router.js',
     routerExportName: null, // for example default for ES6 export
+    routerExportIsAFunction: true,
     routerPrefix: '/api',
     port: 3000,
   }

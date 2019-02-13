@@ -8,41 +8,49 @@ const http = require('http');
 
 const options = require('./loaded-options.js');
 
-function cleanupCache(prfxDir) {
+function cleanupCache() {
   Object.keys(require.cache).forEach((key) => {
-    if (key.startsWith(path.join(process.cwd(), prfxDir))) {
+    if (key.startsWith(path.join(process.cwd(), 'dist'))) {
       delete require.cache[key];
     }
   });
 }
 
-function _watch(tree, outDir, buildSuccess = () => {}, beforeBuildSuccess = () => {}) {
+function _watch(tree, hooks = {}) {
   const builder = new Builder(tree);
   const watcher = new Watcher(builder);
-  const treeSync = new TreeSync(builder.outputPath, outDir);
+  const treeSync = new TreeSync(builder.outputPath, 'dist');
 
-  watcher.on('buildSuccess', async (...args) => {
-    beforeBuildSuccess();
+  watcher.on('buildSuccess', async () => {
     await treeSync.sync();
-    cleanupCache(outDir);
-    buildSuccess();
+    cleanupCache();
+    if(hooks.buildSuccess) {
+      await hooks.buildSuccess();
+    }
   });
+
+  watcher.on('buildStart', async () => {
+    if(hooks.buildStart) {
+      await hooks.buildStart();
+    }
+  });
+
   watcher.start();
 }
 
-async function _build(tree, outDir) {
+async function _build(tree) {
   const builder = new Builder(tree);
   await builder.build();
-  const treeSync = new TreeSync(builder.outputPath, outDir);
+  const treeSync = new TreeSync(builder.outputPath, 'dist');
   await treeSync.sync();
   await builder.cleanup();
 }
 
-function _test(dir) {
+function _test() {
   const mocha = new Mocha();
-  walkSync(path.join(dir, 'test'))
+  walkSync(path.join('dist', 'test'))
     .filter(x => !x.endsWith('/'))
-    .forEach(x => mocha.addFile(path.join(dir, 'test', x)));
+    .forEach(x => mocha.addFile(path.join('dist', 'test', x)));
 
   return new Promise((resolve) => {
     mocha.run(failures => {
@@ -52,68 +60,165 @@ function _test(dir) {
 }
 
 async function test(watch) {
-  const outDir = 'dist';
-
   if(watch) {
-    _watch(options.testingTree, outDir, () => _test(outDir));
+    _watch(options.testingTree, {
+      buildSuccess: () => _test(),
+    });
   } else {
-    await _build(options.testingTree, outDir);
-    const failures = await _test(outDir);
+    await _build(options.testingTree);
+    const failures = await _test();
     process.exitCode = failures ? 1 : 0;
   }
 }
 
+// function debouncePromiseFn(fn) {
+//   let promise = null;
+//   let scheduled = null;
+//   let blockCount = 0;
+
+//   async function _call() {
+//     await fn();
+//     promise = null;
+//   }
+
+//   function call() {
+//     if(!promise) {
+//       promise = fn();
+//       return;
+//     }
+//     if(!scheduled) {
+//       scheduled = true;
+//       promise.then(() => {
+//         scheduled = false;
+//         call();
+//       });
+//       return;
+//     }
+//   }
+
+//   return call;
+// }
+
+class RequestHandler {
+  constructor() {
+    this.requests = [];
+    this.blockCount = 0;
+  }
+
+  push({req, res, next}) {
+    this.requests.push({req, res, next});
+    this.flush();
+  }
+
+  async _flush() {
+    if(!this.router) {
+      if(!this.setupPromise) {
+        this.setupPromise = this._setup();
+      }
+      await this.setupPromise;
+      this.setupPromise = null;
+    }
+
+    this.blockCount++;
+    this.requests.forEach(({req, res, next}) => {
+      this.router(req, res, next);
+    });
+    this.requests.length = 0;
+    this.blockCount--;
+  }
+
+  async _setup() {
+    const {start, stop} = require(path.join(process.cwd(), 'dist', 'src', options.initFile));
+    this._stopFn = stop;
+    await start();
+
+    console.log(`------------- started ---`);
+
+    this.router = require(path.join(process.cwd(), 'dist', 'src', options.routerFile));
+
+    if(options.routerExportName) {
+      this.router = this.router[options.routerExportName];
+    }
+
+    if(options.routerExportIsAFunction) {
+      this.router = this.router();
+    }
+  }
+
+  async _teardown() {
+    console.log('_teardown');
+    if(this._setupPromise) {
+      await this._setupPromise;
+    }
+    if(this._stopFn) {
+      await this._stopFn();
+    }
+  }
+
+  flush() {
+    if(this.blockCount === 0) {
+      this._flush();
+    }
+  }
+
+  async block() {
+    console.log('block');
+
+    this.blockCount++;
+    this.router = null;
+    if(!this._teardownPromise) {
+      this._teardownPromise = this._teardown();
+    }
+    await this._teardownPromise;
+    this._teardownPromise = null;
+  }
+
+  async unblock() {
+    console.log('unblock');
+
+    this.blockCount--;
+    await this.flush();
+  }
+}
+
 function serve() {
-  const outDir = 'dist';
   const app = express();
   const server = http.Server(app);
+  const handler = new RequestHandler();
+  
   server.listen(options.port, () => {
     console.log('development server started on port ' + options.port);
   });
 
-  let router = null;
-  const waitingRequests = [];
   app.use(options.routerPrefix, (req, res, next) => {
-    if(router) {
-      router(req, res, next);
-    } else {
-      waitingRequests.push({req, res, next});
-    }
+    handler.push({req, res, next});
   });
-
-  async function restart() {
-    router = require(path.join(process.cwd(), outDir, 'src', options.routerFile));
-    if(options.routerExportName) {
-      router = router[options.routerExportName];
-    }
-    
-    waitingRequests.forEach(({ req, res, next }) => router(req, res, next));
-    waitingRequests.length = 0;
-  }
 
   app.use('/CLEANUP_WORLD', async (req, res, next) => {
     try {
-      router = null;
+      await handler.block();
       await options.resetWorld();
-      await restart();
-      
+      await handler.unblock();
       res.status(200).end();
     } catch (e) {
       res.status(500).end();
     }
   });
 
-  _watch(options.servingTree, outDir, () => {
-    console.log('reloaded server');
-    restart();
-  }, () => {
-    router = null;
+  _watch(options.servingTree, {
+    buildStart: () => handler.block(),
+    buildSuccess: () => handler.unblock(),
   });
 }
 
 async function build() {
-  await _build(options.appTree, 'dist');
+  await _build(options.appTree);
   console.log('build complete');
 }
 
-module.exports = { build, test, serve };
+async function setupWorld() {
+  await _build(options.servingTree);
+  await options.resetWorld();
+}
+
+module.exports = { build, test, serve, setupWorld };
