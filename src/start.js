@@ -181,7 +181,7 @@ class RequestHandler {
   }
 }
 
-function serve() {
+function serve(resetWorld = false) {
   const app = express();
   const server = http.Server(app);
   const handler = new RequestHandler();
@@ -197,7 +197,9 @@ function serve() {
   app.use('/CLEANUP_WORLD', async (req, res, next) => {
     try {
       await handler.block();
-      await options.resetWorld();
+      if(resetWorld) {
+        await options.resetWorld();
+      }
       await handler.unblock();
       res.status(200).end();
     } catch (e) {
@@ -205,9 +207,16 @@ function serve() {
     }
   });
 
+  let firstBuild = true;
   _watch(options.servingTree, {
     buildStart: () => handler.block(),
-    buildSuccess: () => handler.unblock(),
+    buildSuccess: async () => {
+      if(firstBuild && resetWorld) {
+        await options.resetWorld();
+        firstBuild = false;
+      }
+      handler.unblock();
+    },
   });
 }
 

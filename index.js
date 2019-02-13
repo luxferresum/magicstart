@@ -15,7 +15,8 @@ commander.command('test')
 
 commander.command('serve')
   .alias('s')
-  .action(() => serve());
+  .option('--reset', 'reset world')
+  .action((cmd) => serve(cmd.reset));
 
 commander.command('setup-world')
   .action(() => setupWorld());
